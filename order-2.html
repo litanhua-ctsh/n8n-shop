@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>自動化商店訂單系統</title>
+    <!-- 引入 Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Google Fonts (Noto Sans TC) 提升質感 -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+        }
+        /* 自訂捲軸樣式 */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col">
+
+    <!-- 頂部導覽列 -->
+    <header class="bg-white shadow-sm sticky top-0 z-30 border-b border-slate-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+                <div class="bg-indigo-600 text-white p-2 rounded-lg shadow-sm">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
+                    </svg>
+                </div>
+                <h1 class="text-xl font-bold tracking-tight text-slate-900">自動化商店訂單系統</h1>
+            </div>
+            <div class="flex items-center gap-3">
+                <button onclick="fetchProducts()" class="text-sm text-slate-600 hover:text-indigo-600 flex items-center gap-1 transition-colors px-3 py-1.5 rounded-md hover:bg-slate-100">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                    <span>重新整理商品</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 全域提示訊息區塊 (Alert) -->
+    <div id="alert-container" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 hidden">
+        <div id="alert-box" class="p-4 rounded-xl border flex items-start justify-between shadow-sm transition-all duration-300">
+            <div class="flex items-start gap-3">
+                <div id="alert-icon" class="mt-0.5 flex-shrink-0"></div>
+                <div>
+                    <h3 id="alert-title" class="text-sm font-bold"></h3>
+                    <p id="alert-message" class="text-sm mt-0.5"></p>
+                </div>
+            </div>
+            <button onclick="hideAlert()" class="text-slate-400 hover:text-slate-600 transition-colors ml-4">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- 主內容區：左側商品列表 (7欄)，右側購物車與結帳 (5欄) -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow w-full">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            
+            <!-- 左側：商品列表區 -->
+            <section class="lg:col-span-7 space-y-6">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+                        <span>精選商品列表</span>
+                        <span id="product-count" class="text-xs font-medium bg-slate-200 text-slate-700 px-2.5 py-0.5 rounded-full">載入中...</span>
+                    </h2>
+                </div>
+
+                <!-- 載入中骨架屏 / 狀態 -->
+                <div id="products-loading" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm animate-pulse space-y-4">
+                        <div class="h-40 bg-slate-200 rounded-xl"></div>
+                        <div class="h-5 bg-slate-200 rounded w-3/4"></div>
+                        <div class="h-4 bg-slate-200 rounded w-1/2"></div>
+                        <div class="h-10 bg-slate-200 rounded-lg w-full"></div>
+                    </div>
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm animate-pulse space-y-4">
+                        <div class="h-40 bg-slate-200 rounded-xl"></div>
+                        <div class="h-5 bg-slate-200 rounded w-3/4"></div>
+                        <div class="h-4 bg-slate-200 rounded w-1/2"></div>
+                        <div class="h-10 bg-slate-200 rounded-lg w-full"></div>
+                    </div>
+                </div>
+
+                <!-- 商品卡片網格 -->
+                <div id="products-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-5 hidden">
+                    <!-- 商品卡片將由 JS 動態插入 -->
+                </div>
+            </section>
+
+            <!-- 右側：即時購物車與結帳表單 -->
+            <aside class="lg:col-span-5 space-y-6 lg:sticky lg:top-24">
+                
+                <!-- 購物車區塊 -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="p-5 bg-slate-900 text-white flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                            </svg>
+                            <h2 class="font-bold text-base">您的購物車</h2>
+                        </div>
+                        <span id="cart-badge" class="bg-indigo-600 text-white text-xs font-bold px-2.5 py-1 rounded-full">0 件商品</span>
+                    </div>
+
+                    <!-- 購物車清單容器 -->
+                    <div id="cart-items-container" class="p-5 max-h-80 overflow-y-auto divide-y divide-slate-100">
+                        <!-- 購物車內容由 JS 動態渲染 -->
+                    </div>
+
+                    <!-- 總金額計算區 -->
+                    <div class="p-5 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+                        <span class="text-slate-600 font-medium">訂單總金額</span>
+                        <div class="text-right">
+                            <span class="text-xs text-slate-500 mr-1">NT$</span>
+                            <span id="cart-total" class="text-2xl font-bold text-indigo-600">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 結帳表單區塊 -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                    <h2 class="text-base font-bold text-slate-900 mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                        <span>訂購人資訊與結帳</span>
+                    </h2>
+
+                    <form id="checkout-form" class="space-y-4">
+                        <div>
+                            <label for="customer-name" class="block text-sm font-medium text-slate-700 mb-1">姓名 <span class="text-rose-500">*</span></label>
+                            <input type="text" id="customer-name" name="name" required placeholder="請輸入真實姓名"
+                                class="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow">
+                        </div>
+
+                        <div>
+                            <label for="customer-phone" class="block text-sm font-medium text-slate-700 mb-1">手機號碼 <span class="text-rose-500">*</span></label>
+                            <input type="tel" id="customer-phone" name="phone" required placeholder="例如：0912345678"
+                                class="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow">
+                        </div>
+
+                        <div>
+                            <label for="customer-email" class="block text-sm font-medium text-slate-700 mb-1">電子郵件 <span class="text-rose-500">*</span></label>
+                            <input type="email" id="customer-email" name="email" required placeholder="example@email.com"
+                                class="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow">
+                        </div>
+
+                        <div>
+                            <label for="customer-note" class="block text-sm font-medium text-slate-700 mb-1">訂單備註</label>
+                            <textarea id="customer-note" name="note" rows="2" placeholder="有什麼特殊需求嗎？（選填）"
+                                class="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow"></textarea>
+                        </div>
+
+                        <button type="submit" id="submit-btn"
+                            class="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-bold py-3 px-4 rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed">
+                            <span id="submit-btn-text">確認送出訂單</span>
+                            <svg id="submit-spinner" class="animate-spin h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        </button>
+                    </form>
+                </div>
+
+            </aside>
+        </div>
+    </main>
+
+    <!-- 頁尾 -->
+    <footer class="bg-white border-t border-slate-200 py-6 mt-12">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm text-slate-500">
+            &copy; 2026 自動化商店訂單系統 | Powered by GAS &amp; n8n Webhook
+        </div>
+    </footer>
+
+    <!-- JavaScript 邏輯 -->
+    <script>
+        // API 端點設定
+        const GAS_API_URL = 'https://script.google.com/macros/s/AKfycbyTfK2CzGjUeDGh9GCzJEJacrO9uSQm22JIx8cqEX5-AqjtnF1X1Whsaudz6dkc4xTWqg/exec';
+        const N8N_WEBHOOK_URL = 'http://localhost:5678/webhook-test/e6066073-565a-4f4c-bde7-415092a1b8fd';
+
+        // 應用程式狀態
+        let products = [];
+        let cart = []; // 結構: [{ id, name, price, quantity, image }]
+
+        // 網頁載入完成後執行
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchProducts();
+            renderCart();
+            
+            // 綁定表單送出事件
+            document.getElementById('checkout-form').addEventListener('submit', handleOrderSubmit);
+        });
+
+        // ==========================================
+        // 1. 提示訊息 (Alert) 控制函式
+        // ==========================================
+        function showAlert(type, title, message) {
+            const container = document.getElementById('alert-container');
+            const box = document.getElementById('alert-box');
+            const icon = document.getElementById('alert-icon');
+            const titleEl = document.getElementById('alert-title');
+            const msgEl = document.getElementById('alert-message');
+
+            // 重置樣式
+            box.className = 'p-4 rounded-xl border flex items-start justify-between shadow-sm transition-all duration-300';
+
+            if (type === 'success') {
+                box.classList.add('bg-emerald-50', 'border-emerald-200', 'text-emerald-900');
+                icon.innerHTML = `<svg class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
+            } else {
+                box.classList.add('bg-rose-50', 'border-rose-200', 'text-rose-900');
+                icon.innerHTML = `<svg class="w-5 h-5 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>`;
+            }
+
+            titleEl.textContent = title;
+            msgEl.textContent = message;
+            container.classList.remove('hidden');
+
+            // 自動捲動到頂部讓使用者看到提示
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function hideAlert() {
+            document.getElementById('alert-container').classList.add('hidden');
+        }
+
+        // ==========================================
+        // 2. 從 Google Apps Script 讀取商品資料
+        // ==========================================
+        async function fetchProducts() {
+            const loadingEl = document.getElementById('products-loading');
+            const gridEl = document.getElementById('products-grid');
+            const countEl = document.getElementById('product-count');
+
+            loadingEl.classList.remove('hidden');
+            gridEl.classList.add('hidden');
+            countEl.textContent = '載入中...';
+
+            try {
+                const response = await fetch(GAS_API_URL);
+                if (!response.ok) {
+                    throw new Error(`HTTP 錯誤！狀態碼: ${response.status}`);
+                }
+                const rawData = await response.json();
+
+                // 兼容處理：GAS 可能直接回傳陣列，或包在 { data: [...] } / { products: [...] } 中
+                let itemsArray = Array.isArray(rawData) ? rawData : (rawData.data || rawData.products || rawData.items || []);
+
+                // 標準化商品欄位名稱（兼容中英文欄位）
+                products = itemsArray.map((item, index) => ({
+                    id: String(item.id || item.ID || item.商品編號 || `prod-${index + 1}`),
+                    name: item.name || item.Name || item.title || item.商品名稱 || '未命名商品',
+                    price: Number(item.price || item.Price || item.價格 || item.單價 || 0),
+                    description: item.description || item.desc || item.描述 || item.規格 || '優質精選商品',
+                    image: item.image || item.img || item.imageUrl || item.圖片 || ''
+                }));
+
+                renderProducts();
+            } catch (error) {
+                console.error('讀取商品失敗:', error);
+                showAlert('error', '無法載入商品資料', `請檢查 Google Apps Script 網址權限或網路連線。(${error.message})`);
+                countEl.textContent = '載入失敗';
+                loadingEl.classList.add('hidden');
+            }
+        }
+
+        function renderProducts() {
+            const loadingEl = document.getElementById('products-loading');
+            const gridEl = document.getElementById('products-grid');
+            const countEl = document.getElementById('product-count');
+
+            loadingEl.classList.add('hidden');
+            gridEl.classList.remove('hidden');
+            countEl.textContent = `共 ${products.length} 項商品`;
+
+            if (products.length === 0) {
+                gridEl.innerHTML = `<div class="col-span-full text-center py-12 bg-white rounded-2xl border border-slate-200 text-slate-500">目前沒有上架的商品</div>`;
+                return;
+            }
+
+            gridEl.innerHTML = products.map(product => {
+                // 若無圖片則顯示預設漸層佔位圖
+                const imageHtml = product.image 
+                    ? `<img src="${product.image}" alt="${product.name}" class="w-full h-44 object-cover group-hover:scale-105 transition-transform duration-300" onerror="this.onerror=null;this.parentElement.innerHTML='<div class=\\'w-full h-44 bg-gradient-to-br from-indigo-50 to-slate-100 flex items-center justify-center text-slate-400\\'><svg class=\\'w-12 h-12\\' fill=\\'none\\' stroke=\\'currentColor\\' viewBox=\\'0 0 24 24\\'><path stroke-linecap=\\'round\\' stroke-linejoin=\\'round\\' stroke-width=\\'1.5\\' d=\\'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z\\'></path></svg></div>'">`
+                    : `<div class="w-full h-44 bg-gradient-to-br from-indigo-50 to-slate-100 flex items-center justify-center text-indigo-300">
+                         <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
+                       </div>`;
+
+                return `
+                    <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between group">
+                        <div>
+                            <div class="overflow-hidden bg-slate-100 relative">
+                                ${imageHtml}
+                                <span class="absolute top-3 left-3 bg-white/90 backdrop-blur-sm text-slate-700 text-xs font-medium px-2.5 py-1 rounded-md shadow-sm">
+                                    #${product.id}
+                                </span>
+                            </div>
+                            <div class="p-5">
+                                <h3 class="font-bold text-slate-900 text-base line-clamp-1" title="${product.name}">${product.name}</h3>
+                                <p class="text-slate-500 text-xs mt-1.5 line-clamp-2 min-h-[2rem]">${product.description}</p>
+                            </div>
+                        </div>
+                        <div class="px-5 pb-5 pt-2 flex items-center justify-between border-t border-slate-100 mt-2">
+                            <div>
+                                <span class="text-xs text-slate-400">NT$</span>
+                                <span class="text-lg font-bold text-slate-900">${product.price.toLocaleString()}</span>
+                            </div>
+                            <button onclick="addToCart('${product.id}')" 
+                                class="bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white font-medium text-sm px-3.5 py-2 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                                </svg>
+                                <span>加入購物車</span>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // ==========================================
+        // 3. 購物車操作邏輯
+        // ==========================================
+        function addToCart(productId) {
+            const product = products.find(p => p.id === productId);
+            if (!product) return;
+
+            const existingItem = cart.find(item => item.id === productId);
+            if (existingItem) {
+                existingItem.quantity += 1;
+            } else {
+                cart.push({
+                    id: product.id,
+                    name: product.name,
+                    price: product.price,
+                    quantity: 1
+                });
+            }
+            renderCart();
+        }
+
+        function updateQuantity(productId, delta) {
+            const itemIndex = cart.findIndex(item => item.id === productId);
+            if (itemIndex === -1) return;
+
+            cart[itemIndex].quantity += delta;
+            if (cart[itemIndex].quantity <= 0) {
+                cart.splice(itemIndex, 1);
+            }
+            renderCart();
+        }
+
+        function removeFromCart(productId) {
+            cart = cart.filter(item => item.id !== productId);
+            renderCart();
+        }
+
+        function renderCart() {
+            const container = document.getElementById('cart-items-container');
+            const badgeEl = document.getElementById('cart-badge');
+            const totalEl = document.getElementById('cart-total');
+
+            const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
+            const totalAmount = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+            badgeEl.textContent = `${totalItems} 件商品`;
+            totalEl.textContent = totalAmount.toLocaleString();
+
+            if (cart.length === 0) {
+                container.innerHTML = `
+                    <div class="py-10 text-center text-slate-400">
+                        <svg class="w-12 h-12 mx-auto mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
+                        </svg>
+                        <p class="text-sm">購物車目前是空的</p>
+                        <p class="text-xs mt-1">請從左側選擇商品加入</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = cart.map(item => `
+                <div class="py-3.5 flex items-center justify-between gap-3">
+                    <div class="flex-1 min-w-0">
+                        <h4 class="text-sm font-bold text-slate-800 truncate">${item.name}</h4>
+                        <p class="text-xs text-slate-500 mt-0.5">NT$ ${item.price.toLocaleString()} × ${item.quantity}</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="flex items-center border border-slate-200 rounded-lg bg-slate-50">
+                            <button type="button" onclick="updateQuantity('${item.id}', -1)" class="w-7 h-7 flex items-center justify-center text-slate-600 hover:bg-slate-200 rounded-l-lg transition-colors cursor-pointer">-</button>
+                            <span class="w-8 text-center text-xs font-bold text-slate-800">${item.quantity}</span>
+                            <button type="button" onclick="updateQuantity('${item.id}', 1)" class="w-7 h-7 flex items-center justify-center text-slate-600 hover:bg-slate-200 rounded-r-lg transition-colors cursor-pointer">+</button>
+                        </div>
+                        <button type="button" onclick="removeFromCart('${item.id}')" title="移除商品" class="p-1.5 text-slate-400 hover:text-rose-500 transition-colors cursor-pointer">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ==========================================
+        // 4. n8n Webhook 訂單送出與回應處理
+        // ==========================================
+        async function handleOrderSubmit(event) {
+            event.preventDefault();
+            hideAlert();
+
+            // 檢查購物車是否為空
+            if (cart.length === 0) {
+                showAlert('error', '無法送出訂單', '您的購物車目前是空的，請先加入至少一項商品！');
+                return;
+            }
+
+            // 取得表單資料
+            const name = document.getElementById('customer-name').value.trim();
+            const phone = document.getElementById('customer-phone').value.trim();
+            const email = document.getElementById('customer-email').value.trim();
+            const note = document.getElementById('customer-note').value.trim();
+
+            const totalAmount = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+            // 打包傳送給 n8n 的 JSON 資料結構
+            const orderPayload = {
+                orderDate: new Date().toISOString(),
+                customer: {
+                    name,
+                    phone,
+                    email,
+                    note
+                },
+                items: cart.map(item => ({
+                    id: item.id,
+                    name: item.name,
+                    price: item.price,
+                    quantity: item.quantity,
+                    subtotal: item.price * item.quantity
+                })),
+                totalAmount: totalAmount
+            };
+
+            // 切換按鈕為載入中狀態
+            setSubmitLoading(true);
+
+            try {
+                const response = await fetch(N8N_WEBHOOK_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(orderPayload)
+                });
+
+                // 嘗試解析 n8n Respond to Webhook 回傳的 JSON
+                let responseData = {};
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    responseData = await response.json();
+                } else {
+                    const textData = await response.text();
+                    responseData = { message: textData || '訂單已送出' };
+                }
+
+                // 檢查 HTTP 狀態碼或自訂 status 欄位
+                if (!response.ok || responseData.status === 'error') {
+                    throw new Error(responseData.message || `伺服器回應錯誤 (狀態碼: ${response.status})`);
+                }
+
+                // 成功處理：顯示 n8n 回傳的訊息、清空購物車與表單
+                const successMessage = responseData.message || '訂單已成功送出！我們將盡快為您處理。';
+                showAlert('success', '訂單建立成功', successMessage);
+
+                cart = [];
+                renderCart();
+                document.getElementById('checkout-form').reset();
+
+            } catch (error) {
+                console.error('送出訂單失敗:', error);
+                showAlert('error', '訂單送出失敗', `無法連線至自動化伺服器或處理發生錯誤：${error.message}`);
+            } finally {
+                // 恢復按鈕狀態
+                setSubmitLoading(false);
+            }
+        }
+
+        function setSubmitLoading(isLoading) {
+            const btn = document.getElementById('submit-btn');
+            const btnText = document.getElementById('submit-btn-text');
+            const spinner = document.getElementById('submit-spinner');
+
+            btn.disabled = isLoading;
+            if (isLoading) {
+                btnText.textContent = '訂單處理中...';
+                spinner.classList.remove('hidden');
+            } else {
+                btnText.textContent = '確認送出訂單';
+                spinner.classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
