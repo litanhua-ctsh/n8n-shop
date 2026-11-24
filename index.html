@@ -561,4 +561,32 @@
         alertBox.classList.add("bg-amber-50", "border-amber-200", "text-amber-800");
         alertIcon.className = "fa-solid fa-triangle-exclamation text-amber-600 text-lg mt-0.5";
       } else {
-        alertBox.classList.add("bg-rose-
+        alertBox.classList.add("bg-rose-50", "border-rose-200", "text-rose-800");
+        alertIcon.className = "fa-solid fa-circle-xmark text-rose-600 text-lg mt-0.5";
+      }
+
+      alertTitle.textContent = title;
+      alertMessage.textContent = message;
+      alertBox.classList.remove("hidden");
+
+      // 自動捲動至頂部確保使用者看到提示
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function hideAlert() {
+      document.getElementById("alertBox").classList.add("hidden");
+    }
+
+    // 防止 XSS 攻擊的字串轉義函式
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+  </script>
+</body>
+</html>
