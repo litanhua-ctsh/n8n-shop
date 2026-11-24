@@ -9,7 +9,6 @@
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <style>
-    /* 自訂捲軸樣式 */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: #f1f5f9; }
     ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
@@ -83,7 +82,6 @@
 
         <!-- 商品卡片容器 -->
         <div id="productGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <!-- Loading 骨架屏 -->
           <div class="col-span-full bg-white rounded-xl border border-slate-200 p-12 text-center">
             <i class="fa-solid fa-circle-notch fa-spin text-3xl text-indigo-600 mb-3"></i>
             <p class="text-slate-600 font-medium">正在從 Google Sheets 讀取最新商品...</p>
@@ -192,12 +190,11 @@
     const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyTfK2CzGjUeDGh9GCzJEJacrO9uSQm22JIx8cqEX5-AqjtnF1X1Whsaudz6dkc4xTWqg/exec";
     const N8N_WEBHOOK_URL = "http://localhost:5678/webhook-test/ctsh";
 
-    // 全域狀態管理
     let allProducts = [];
-    let cart = []; // 結構: [{ id, name, price, qty, image, category }]
+    let cart = [];
 
     // ==========================================
-    // 2. 初始化與讀取 GAS 商品資料
+    // 2. 初始化與讀取 GAS 商品資料（含超時與錯誤診斷）
     // ==========================================
     document.addEventListener("DOMContentLoaded", () => {
       fetchProducts();
@@ -211,42 +208,83 @@
       refreshIcon.classList.add("fa-spin");
       countBadge.textContent = "更新中...";
 
+      // 設定 12 秒連線逾時控制器，避免無限轉圈
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+
       try {
-        const response = await fetch(GAS_API_URL);
+        // 加上時間戳記避免瀏覽器快取舊的失敗結果，並明確跟隨 GAS 302 轉址
+        const requestUrl = `${GAS_API_URL}?t=${Date.now()}`;
+        const response = await fetch(requestUrl, {
+          method: "GET",
+          redirect: "follow",
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
         if (!response.ok) {
           throw new Error(`HTTP 錯誤狀態碼: ${response.status}`);
         }
 
-        const rawData = await response.json();
-        // 相容常見 GAS 回傳格式：直接為陣列，或包在 { data: [...] } / { products: [...] } 內
+        // 先以純文字讀取，方便診斷 GAS 是否回傳了 HTML 登入頁面而非 JSON
+        const rawText = await response.text();
+        let rawData;
+        try {
+          rawData = JSON.parse(rawText);
+        } catch (parseErr) {
+          console.error("GAS 回傳的非 JSON 內容:", rawText.slice(0, 300));
+          throw new Error("GAS 回傳的不是有效的 JSON（通常代表部署權限未設為「所有人」，被導向 Google 登入頁了）。");
+        }
+
+        // 檢查您的 GAS doGet 設計的 status === "error"
+        if (rawData && rawData.status === "error") {
+          throw new Error(`GAS 後端回報錯誤：${rawData.message}`);
+        }
+
         const list = Array.isArray(rawData) ? rawData : (rawData.data || rawData.products || rawData.items || []);
 
-        // 標準化欄位名稱（兼容中英文欄位命名）
         allProducts = list.map((item, idx) => ({
-          id: String(item.id ?? item.ID ?? item.商品編號 ?? `P-${idx + 1}`),
-          name: item.name ?? item.title ?? item.商品名稱 ?? item.名稱 ?? "未命名商品",
-          price: Number(item.price ?? item.售價 ?? item.價格 ?? 0),
-          category: item.category ?? item.分類 ?? "精選商品",
-          description: item.description ?? item.desc ?? item.描述 ?? item.規格 ?? "",
-          image: item.image ?? item.img ?? item.圖片 ?? "",
-          stock: item.stock !== undefined ? Number(item.stock) : (item.庫存 !== undefined ? Number(item.庫存) : 99)
+          id: String(item.id ?? item.ID ?? item.商品編號 ?? item.編號 ?? `P-${idx + 1}`),
+          name: item.name ?? item.title ?? item.商品名稱 ?? item.名稱 ?? item.品名 ?? "未命名商品",
+          price: Number(item.price ?? item.售價 ?? item.價格 ?? item.單價 ?? 0),
+          category: item.category ?? item.分類 ?? item.類別 ?? "精選商品",
+          description: item.description ?? item.desc ?? item.描述 ?? item.規格 ?? item.說明 ?? "",
+          image: item.image ?? item.img ?? item.圖片 ?? item.圖片網址 ?? "",
+          stock: item.stock !== undefined && item.stock !== ""
+            ? Number(item.stock)
+            : (item.庫存 !== undefined && item.庫存 !== "" ? Number(item.庫存) : 99)
         }));
 
         renderProducts(allProducts);
       } catch (error) {
+        clearTimeout(timeoutId);
         console.error("讀取 GAS 商品失敗:", error);
         countBadge.textContent = "載入失敗";
+
+        let friendlyReason = error.message;
+        if (error.name === "AbortError") {
+          friendlyReason = "連線逾時（超過 12 秒無回應）。請檢查網路連線或確認 GAS 網址是否正確。";
+        } else if (error.message.includes("Failed to fetch")) {
+          friendlyReason = "跨來源請求 (CORS) 被瀏覽器阻擋！\n請至 Google Apps Script「部署 → 管理部署」，確認「誰可以存取」已設為【所有人】。";
+        }
+
         grid.innerHTML = `
           <div class="col-span-full bg-rose-50 border border-rose-200 rounded-xl p-8 text-center text-rose-700">
             <i class="fa-solid fa-triangle-exclamation text-3xl mb-2"></i>
-            <p class="font-bold">無法讀取商品資料</p>
-            <p class="text-xs mt-1 text-rose-600">${escapeHtml(error.message)}</p>
-            <button onclick="fetchProducts()" class="mt-4 px-4 py-2 bg-rose-600 text-white text-xs font-medium rounded-lg hover:bg-rose-700 transition">
-              重試連線
-            </button>
+            <p class="font-bold text-base">無法讀取商品資料</p>
+            <p class="text-xs mt-2 text-rose-600 whitespace-pre-line leading-relaxed max-w-lg mx-auto">${escapeHtml(friendlyReason)}</p>
+            <div class="mt-4 flex items-center justify-center gap-3">
+              <button onclick="fetchProducts()" class="px-4 py-2 bg-rose-600 text-white text-xs font-medium rounded-lg hover:bg-rose-700 transition">
+                <i class="fa-solid fa-rotate-right mr-1"></i> 重試連線
+              </button>
+              <a href="${GAS_API_URL}" target="_blank" rel="noopener noreferrer" class="px-4 py-2 bg-white border border-rose-300 text-rose-700 text-xs font-medium rounded-lg hover:bg-rose-100 transition">
+                直接開啟 GAS 網址測試 <i class="fa-solid fa-arrow-up-right-from-square ml-1"></i>
+              </a>
+            </div>
           </div>
         `;
-        showAlert("error", "商品載入失敗", `無法從 Google Apps Script 取得資料：${error.message}`);
+        showAlert("error", "商品載入失敗", friendlyReason);
       } finally {
         refreshIcon.classList.remove("fa-spin");
       }
@@ -313,7 +351,6 @@
       }).join("");
     }
 
-    // 搜尋過濾商品
     function filterProducts() {
       const keyword = document.getElementById("searchInput").value.trim().toLowerCase();
       if (!keyword) {
@@ -428,17 +465,11 @@
     async function submitOrder(event) {
       event.preventDefault();
 
-      // 驗證購物車是否為空
       if (cart.length === 0) {
         showAlert("warning", "購物車為空", "請先將至少一項商品加入購物車後再送出訂單！");
         return;
       }
 
-      const submitBtn = document.getElementById("submitBtn");
-      const submitIcon = document.getElementById("submitIcon");
-      const submitText = document.getElementById("submitText");
-
-      // 取得表單資料
       const customer = {
         name: document.getElementById("customerName").value.trim(),
         phone: document.getElementById("customerPhone").value.trim(),
@@ -449,7 +480,6 @@
       const totalQty = cart.reduce((sum, item) => sum + item.qty, 0);
       const totalAmount = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
 
-      // 打包完整訂單 JSON Payload
       const orderPayload = {
         orderTime: new Date().toISOString(),
         customer: customer,
@@ -466,7 +496,6 @@
         }
       };
 
-      // 按鈕切換至載入中狀態
       setLoadingState(true);
       hideAlert();
 
@@ -480,7 +509,6 @@
           body: JSON.stringify(orderPayload)
         });
 
-        // 嘗試解析 n8n Respond to Webhook 回傳的 JSON
         let responseData = null;
         const contentType = response.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
@@ -498,19 +526,15 @@
           throw new Error(responseData?.message || `伺服器回應錯誤 (${response.status})`);
         }
 
-        // 檢查 n8n 自訂狀態（若 n8n 回傳 status: "error" 也能正確攔截）
         if (responseData && responseData.status === "error") {
           throw new Error(responseData.message || "n8n 流程處理失敗");
         }
 
-        // 讀取後端回傳的訊息
         const serverMessage = responseData?.message || "訂單已成功送出！我們將盡快為您處理。";
         const orderIdInfo = responseData?.orderId ? `\n訂單編號：${responseData.orderId}` : "";
 
-        // 顯示成功 Alert
         showAlert("success", "訂單送出成功", `${serverMessage}${orderIdInfo}`);
 
-        // 清空購物車與表單
         clearCart();
         document.getElementById("orderForm").reset();
 
@@ -522,7 +546,6 @@
         }
         showAlert("error", "訂單送出失敗", errorHint);
       } finally {
-        // 恢復按鈕狀態
         setLoadingState(false);
       }
     }
@@ -551,7 +574,6 @@
       const alertTitle = document.getElementById("alertTitle");
       const alertMessage = document.getElementById("alertMessage");
 
-      // 重設樣式
       alertBox.className = "rounded-xl p-4 border shadow-sm transition-all duration-300 flex items-start justify-between gap-3";
 
       if (type === "success") {
@@ -569,7 +591,6 @@
       alertMessage.textContent = message;
       alertBox.classList.remove("hidden");
 
-      // 自動捲動至頂部確保使用者看到提示
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
 
@@ -577,7 +598,6 @@
       document.getElementById("alertBox").classList.add("hidden");
     }
 
-    // 防止 XSS 攻擊的字串轉義函式
     function escapeHtml(str) {
       if (str === null || str === undefined) return "";
       return String(str)
